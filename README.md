@@ -14,6 +14,22 @@ Some coronavirus data visualization and analysis.
 The file `data/nst-est2019-alldata.csv` contains 2019 state population estimates.
 
 
+### Census data for US county populations
+
+County-level 2019 Population estimate by age band.
+
+- web page: https://www.census.gov/data/datasets/time-series/demo/popest/2010s-counties-total.html
+- csv file: https://www2.census.gov/programs-surveys/popest/datasets/2010-2019/counties/totals/co-est2019-alldata.csv
+
+Files:
+- `data/co-est2019-alldata.csv` contains county-level population data by age band?
+
+Files:
+
+- `data/cc-est2018-alldata.csv` contains county-level population data by age band.
+- `data/cc-est2018-alldata.pdf` contains column descriptions
+
+
 ### 2010 Census data for urban population percentage by state
 
 - https://www2.census.gov/geo/docs/reference/ua/PctUrbanRural_State.xls
