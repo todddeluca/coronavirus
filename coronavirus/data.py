@@ -58,13 +58,17 @@ def before_threshold(df, col, thresh):
 
 def fill_before_first(df, col, thresh, thresh_col=None, fill=np.nan):
     '''
-    Within each entity, df[col] = fill when df[thresh_col] < thresh
-    and occur before the first day that df[thresh_col] >= threshold.
-    :param col: the column to fill
-    :param thresh_col: if not None, use this column to determine which rows
+    For each entity, replace the values of col for every row that occurs
+    before the first row where thresh_col >= thresh.
+    For example, fill in the 'deaths' column with np.nan for every row before the
+    first date where 'deaths_per_million' was >= 0.1.
+    :param col: the column to be filled in
+    :param thresh: the threshold value used to determine what rows occur before the
+      threshold is first met.
+    :param thresh_col: if not None, use this column to determine which rows to fill in.
+    :param fill: the fill value, np.nan by default.
     '''
-    return df[col].where(~before_threshold(df, thresh_col, thresh),
-                         np.nan)
+    return df[col].where(~before_threshold(df, thresh_col, thresh), fill)
 
 
 def make_days_since(df, col, thresh):
@@ -156,15 +160,27 @@ def add_derived_values_cols(df):
             df[f'{values}_per_test'] = df[values] / df['tests']
             df[f'{values}_per_day_3day_avg_tests_per_day_3day_avg_ratio'] = (
                     df[f'{values}_per_day_3day_avg'] / df['tests_per_day_3day_avg'])
+            df[f'{values}_per_day_7day_avg_tests_per_day_7day_avg_ratio'] = (
+                    df[f'{values}_per_day_7day_avg'] / df['tests_per_day_7day_avg'])
             df[f'{values}_per_test_per_day'] = df[f'{values}_per_day'] / df['tests_per_day']
             df[f'{values}_per_test_per_day_3day_avg'] = (df.groupby('entity')[f'{values}_per_test_per_day']
                                                          .transform(lambda s: s.rolling(3).mean()))
+            df[f'{values}_per_test_per_day_7day_avg'] = (df.groupby('entity')[f'{values}_per_test_per_day']
+                                                         .transform(lambda s: s.rolling(7).mean()))
             df[f'{values}_per_day_3day_avg_tests_per_day_3day_avg_ratio_14day_ratio'] = (
                 df.groupby(['entity'])[f'{values}_per_day_3day_avg_tests_per_day_3day_avg_ratio']
                     .transform(lambda s: s.rolling(15).apply(lambda w: w.iloc[-1] / w.iloc[0]))
             )
             df[f'{values}_per_test_per_day_3day_avg_14day_ratio'] = (
                 df.groupby(['entity'])[f'{values}_per_test_per_day_3day_avg']
+                    .transform(lambda s: s.rolling(15).apply(lambda w: w.iloc[-1] / w.iloc[0]))
+            )
+            df[f'{values}_per_day_7day_avg_tests_per_day_7day_avg_ratio_14day_ratio'] = (
+                df.groupby(['entity'])[f'{values}_per_day_7day_avg_tests_per_day_7day_avg_ratio']
+                    .transform(lambda s: s.rolling(15).apply(lambda w: w.iloc[-1] / w.iloc[0]))
+            )
+            df[f'{values}_per_test_per_day_7day_avg_14day_ratio'] = (
+                df.groupby(['entity'])[f'{values}_per_test_per_day_7day_avg']
                     .transform(lambda s: s.rolling(15).apply(lambda w: w.iloc[-1] / w.iloc[0]))
             )
 
