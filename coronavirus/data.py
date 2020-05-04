@@ -582,18 +582,20 @@ def map_owid_to_un_pop(mer=None):
     return mer
 
 
-'''
-Data on Age, Comorbidity and Death
-New York City Sources:
-- NYC Health Department: https://www1.nyc.gov/site/doh/covid/covid-19-data.page
-- deaths by age and comorbidity status: https://www1.nyc.gov/assets/doh/downloads/pdf/imm/covid-19-daily-data-summary-deaths-04222020-1.pdf
-- cases by age band: https://www1.nyc.gov/assets/doh/downloads/pdf/imm/covid-19-daily-data-summary-04222020-1.pdf
-'''
+
+
+def load_ma_state_data():
+    return
 
 
 def load_nyc_age_comorbidity_death_data(cache=False):
     '''
     Return a tidy table containing deaths segmented by age band and comorbidity status.
+    Data on Age, Comorbidity and Death
+    New York City Sources:
+    - NYC Health Department: https://www1.nyc.gov/site/doh/covid/covid-19-data.page
+    - deaths by age and comorbidity status: https://www1.nyc.gov/assets/doh/downloads/pdf/imm/covid-19-daily-data-summary-deaths-04222020-1.pdf
+    - cases by age band: https://www1.nyc.gov/assets/doh/downloads/pdf/imm/covid-19-daily-data-summary-04222020-1.pdf
     '''
     age_bands = ['0 to 17', '18 to 44', '45 to 64', '65 to 74', '75+', 'unknown']
     min_age = [0, 18, 45, 65, 75, np.nan]
