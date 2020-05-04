@@ -2,6 +2,8 @@ import datetime
 import numpy as np
 import pandas as pd
 from pathlib import Path
+import re
+
 
 
 DATA_DIR = Path('./data')
@@ -106,6 +108,28 @@ def make_days_since(df, col, thresh):
     return df.groupby(['entity'])[col].transform(days_since, thresh=thresh)
 
 
+def add_per_day(df, columns):
+    if isinstance(columns, str):
+        columns = [columns]
+
+    for col in columns:
+        df[f'{col}_per_day'] = df.groupby('entity')[col].transform(
+            lambda s: s.rolling(2).apply(lambda w: w.iloc[-1] - w.iloc[0]))
+
+    return df
+
+
+def add_nday_avg(df, columns, n=7):
+    if isinstance(columns, str):
+        columns = [columns]
+
+    for col in columns:
+        df[f'{col}_{n}day_avg'] = df.groupby('entity')[col].transform(
+            lambda s: s.rolling(n).mean())
+
+    return df
+
+
 def add_derived_values_cols(df):
     '''
     deaths_per_million
@@ -183,6 +207,124 @@ def add_derived_values_cols(df):
                 df.groupby(['entity'])[f'{values}_per_test_per_day_7day_avg']
                     .transform(lambda s: s.rolling(15).apply(lambda w: w.iloc[-1] / w.iloc[0]))
             )
+
+    return df
+
+
+def add_erickson_estimates(df):
+    '''
+    Add columns for prevalence estimated using confirmed cases, the Erickson estimate, and
+    an adjusted Erickson estimate that has been scaled so that for NY state it matches
+    the NY state seroprevalence results.
+    :param df:
+    :return:
+    '''
+    # As of 2020-05-02
+    ny_seroprevalence = 0.123
+    ny_tests = 959071
+    ny_cases = 312977
+    seroprevalence_adjustment = ny_seroprevalence / (ny_cases / ny_tests)
+
+    df['confirmed_prevalence'] = df['cases'] / df['population']
+    df['erickson_prevalence'] = df['cases_per_test']
+    df['adjusted_erickson_prevalence'] = df['erickson_prevalence'] * seroprevalence_adjustment
+    df['confirmed_ifr'] = df['deaths'] / (df['confirmed_prevalence'] * df['population'])
+    df['erickson_ifr'] = df['deaths'] / (df['erickson_prevalence'] * df['population'])
+    df['adjusted_erickson_ifr'] = df['deaths'] / (df['adjusted_erickson_prevalence'] * df['population'])
+    return df
+
+
+def to_nyc_band(df):
+    '''
+    df is a census population dataframe with 'AGEGRP' and 'population' columns. Assign those
+    population numbers to the New York City age bands.
+    This is can be used with df.groupby().apply() to convert census age group population data.
+    :param df:
+    :return: a dataframe with 'nyc_age_band' and 'population' columns.
+    '''
+    # Methods: census bands and nyc bands don't intersect perfectly. There is
+    # overlap between boundaries at nyc boundaries (0-17, 18-44) and census boundaries (15-19, 20-24).
+    # here it is put into the 0 to 17 category, since 3 of 5 years are in that category.
+    # Population allocation can be done better by
+    # allocating 3/5ths to one category and 2/5ths to the other.
+    age_bands = ['0 to 17', '18-44', '45-64', '65-74', '75+']
+    pop_0_to_17 = (df.loc[(df['AGEGRP'] >= 1) & (df['AGEGRP'] <= 3), 'population'].sum()
+                   + round(df.loc[(df['AGEGRP'] == 4), 'population'].values[0] * 3 / 5))
+    pop_18_to_44 = (round(df.loc[(df['AGEGRP'] == 4), 'population'].values[0] * 2 / 5)
+                    + df.loc[(df['AGEGRP'] >= 5) & (df['AGEGRP'] <= 9), 'population'].sum())
+    pop_45_to_64 = df.loc[(df['AGEGRP'] >= 10) & (df['AGEGRP'] <= 13), 'population'].sum()
+    pop_65_to_74 = df.loc[(df['AGEGRP'] >= 14) & (df['AGEGRP'] <= 15), 'population'].sum()
+    pop_75_plus = df.loc[(df['AGEGRP'] >= 16) & (df['AGEGRP'] <= 18), 'population'].sum()
+    return pd.DataFrame({
+        'nyc_age_band': age_bands,
+        'population': [pop_0_to_17, pop_18_to_44, pop_45_to_64, pop_65_to_74, pop_75_plus]
+    })
+
+
+def to_ma_band(df):
+    '''
+    Massachusetts reports cases and deaths for the age bands:
+    0-19, 20-29, 30-39, 40-49, 50-59, 60-69, 70-79, 80+
+    :param df:
+    :return:
+    '''
+    age_bands = ['0 to 19', '20 to 29', '30 to 39', '40 to 49', '50 to 59', '60 to 69', '70 to 79', '80+']
+    pops = [
+        df.loc[(df['AGEGRP'] >= 1) & (df['AGEGRP'] <= 4), 'population'].sum(),
+        df.loc[(df['AGEGRP'] >= 5) & (df['AGEGRP'] <= 6), 'population'].sum(),
+        df.loc[(df['AGEGRP'] >= 7) & (df['AGEGRP'] <= 8), 'population'].sum(),
+        df.loc[(df['AGEGRP'] >= 9) & (df['AGEGRP'] <= 10), 'population'].sum(),
+        df.loc[(df['AGEGRP'] >= 11) & (df['AGEGRP'] <= 12), 'population'].sum(),
+        df.loc[(df['AGEGRP'] >= 13) & (df['AGEGRP'] <= 14), 'population'].sum(),
+        df.loc[(df['AGEGRP'] >= 15) & (df['AGEGRP'] <= 16), 'population'].sum(),
+        df.loc[(df['AGEGRP'] >= 17) & (df['AGEGRP'] <= 18), 'population'].sum(),
+    ]
+    return pd.DataFrame({
+        'ma_age_band': age_bands,
+        'population': pops
+    })
+
+
+def load_census_state_population_by_age_data(bands='census'):
+    '''
+    See data/cc-est2018-alldata.pdf for a description of column values for SUMLEV, YEAR and AGEGRP.
+    Census groups are 5 years wide. They are mapped to NYC age bands in a crude way.
+    bands: 'census' or 'nyc' or 'ma'
+    '''
+    group_to_name = {
+        0: 'Total',
+        1: '0 to 4',
+        2: '5 to 9',
+        3: '10 to 14',
+        4: '15 to 19',
+        5: '20 to 24',
+        6: '25 to 29',
+        7: '30 to 34',
+        8: '35 to 39',
+        9: '40 to 44',
+        10: '45 to 49',
+        11: '50 to 54',
+        12: '55 to 59',
+        13: '60 to 64',
+        14: '65 to 69',
+        15: '70 to 74',
+        16: '75 to 79',
+        17: '80 to 84',
+        18: '85+'
+    }
+    df = pd.read_csv(DATA_DIR / 'cc-est2018-alldata.csv', encoding='latin-1')
+    df = df.loc[(df['SUMLEV'] == 50) & (df['YEAR'] == 11),  # county-level, 2018 estimate
+                ['STATE', 'STNAME', 'AGEGRP', 'TOT_POP', 'COUNTY', 'CTYNAME']]
+    df = (df
+          .groupby(['STNAME', 'AGEGRP'])['TOT_POP'].sum().reset_index()
+          .rename(columns={'STNAME': 'entity', 'TOT_POP': 'population'})
+          .assign(age_group=lambda d: d['AGEGRP'].apply(lambda g: group_to_name[g]))
+          )
+
+    if bands == 'nyc':
+        df = df.groupby(['entity'])[['AGEGRP', 'population']].apply(to_nyc_band).reset_index().drop(columns='level_1')
+    elif bands == 'ma':
+        df = df.groupby(['entity'])[['AGEGRP', 'population']].apply(to_ma_band).reset_index().drop(columns='level_1')
 
     return df
 
@@ -448,12 +590,16 @@ New York City Sources:
 - cases by age band: https://www1.nyc.gov/assets/doh/downloads/pdf/imm/covid-19-daily-data-summary-04222020-1.pdf
 '''
 
+
 def load_nyc_age_comorbidity_death_data(cache=False):
     '''
     Return a tidy table containing deaths segmented by age band and comorbidity status.
     '''
-    age_bands = ['0-17', '18-44', '45-64', '65-74', '75 and over', 'unknown']
+    age_bands = ['0 to 17', '18 to 44', '45 to 64', '65 to 74', '75+', 'unknown']
+    min_age = [0, 18, 45, 65, 75, np.nan]
+    max_age = [17, 44, 64, 74, 200, np.nan]
     comorbidity = ['yes', 'no', 'unknown']
+
     deaths_20200421 = [
         3, 0, 0,
         343, 9, 74,
@@ -470,18 +616,86 @@ def load_nyc_age_comorbidity_death_data(cache=False):
         3794, 1, 1923,
         0, 0, 2,
     ]
+    deaths_20200429 = [
+        6, 0, 0,
+        401, 14, 92,
+        2363, 54, 386,
+        2255, 4, 842,
+        4140, 1, 2011,
+        0, 0, 2,
+    ]
+    # source: https://www1.nyc.gov/assets/doh/downloads/pdf/imm/covid-19-daily-data-summary-deaths-05022020-1.pdf
+    deaths_20200501 = [
+        6, 0, 0,
+        431, 14, 89,
+        2532, 60, 345,
+        2470, 5, 785,
+        4586, 2, 1829,
+        0, 0, 2,
+    ]
+
     cases_20200421 = [2839, 51217, 50694, 17474, 15932, 279]
     cases_20200426 = [3488, 57462, 57556, 19545, 17735, 314]
-    deaths_df = pd.DataFrame({'age_band': np.repeat(age_bands, len(comorbidity)),
-                              'comorbidity': comorbidity * len(age_bands),
-                              'deaths': deaths_20200426})
-    df = pd.DataFrame({'age_band': age_bands,
-                       'cases': cases_20200426,
-                       'deaths': list(deaths_df.groupby('age_band').sum()['deaths'])})
-    if cache:
-        pd.to_csv(DATA_DIR / 'nyc_age_comorbidity_deaths.csv')
+    cases_20200429 = [3711, 59684, 59715, 20273, 18506, 323]
+    # source: https://www1.nyc.gov/assets/doh/downloads/pdf/imm/covid-19-daily-data-summary-05022020-1.pdf
+    cases_20200501 = [3897, 61376, 61424, 20813, 19045, 328]
 
-    return deaths_df, df
+    age_comorbidity_df = pd.DataFrame({'nyc_age_band': np.repeat(age_bands, len(comorbidity)),
+                              'comorbidity': comorbidity * len(age_bands),
+                              'deaths': deaths_20200429})
+    df = pd.DataFrame({'nyc_age_band': age_bands,
+                           'min_age': min_age,
+                           'max_age': max_age,
+                       'cases': cases_20200429,
+                       'deaths': list(age_comorbidity_df.groupby('nyc_age_band').sum()['deaths'])})
+    df = df.loc[df['nyc_age_band'] != 'unknown', :]
+    # df['cumulative_deaths'] = df['deaths'].cumsum()
+    # df['cumulative_death_pct'] = 100 * df['cumulative_deaths'] / df['deaths'].sum()
+    # df['cumulative_cases'] = df['cases'].cumsum()
+    # df['cumulative_cases_pct'] = 100 * df['cumulative_cases'] / df['cases'].sum()
+    df['deaths_per_case'] = df['deaths'] / df['cases']
+    # df['cumulative_deaths_per_case'] = df['cumulative_deaths'] / df['cumulative_cases']
+
+
+    # age_df['max_age'] =
+    if cache:
+        df.to_csv(DATA_DIR / 'nyc_cases_and_deaths_by_age.csv')
+        age_comorbidity_df.to_csv(DATA_DIR / 'nyc_deaths_by_age_and_comorbidity.csv')
+
+    return age_comorbidity_df, df
+
+
+def load_cdc_deaths_by_age(download=False, cache=False):
+    url = 'https://data.cdc.gov/api/views/hc4f-j6nb/rows.csv?accessType=DOWNLOAD'
+    filename = DATA_DIR / 'cdc_provisional_coronavirus_deaths.csv'
+    df = download_or_load(url, filename, download=download, cache=cache)
+
+    df = (df[(df['State'] == 'United States') & (df['Group'] == 'By age')]
+          .rename(columns={'State': 'entity',
+                           'End week': 'date',
+                           'All COVID-19 Deaths (U07.1)': 'deaths',
+                           'Indicator': 'age_band'})
+          .loc[lambda d: d['age_band'] != 'All ages', ['date', 'entity', 'deaths', 'age_band']]
+         )
+
+    def parse_cdc_age_band(age_band):
+        if age_band == '85 years and over':
+            return 85, 200  # 200 is pre-singularity bullshit max year.
+        elif age_band == 'Under 1 year':
+            return 0, 0
+        elif age_band == 'All ages':
+            return 0, 200
+        elif (match := re.search('(\d+)\D(\d+) years', age_band)):
+            return int(match.group(1)), int(match.group(2))
+        else:
+            raise Exception('Unparseable age_band', age_band)
+
+    df['min_age'] = df['age_band'].apply(lambda x: parse_cdc_age_band(x)[0])
+    df['max_age'] = df['age_band'].apply(lambda x: parse_cdc_age_band(x)[1])
+    df = df.sort_values(by=['min_age', 'max_age'], kind='mergesort')
+    df['cumulative_deaths'] = df['deaths'].cumsum()
+    df['cumulative_death_pct'] = 100 * df['cumulative_deaths'] / df['deaths'].sum()
+    return df
 
 
 def main():

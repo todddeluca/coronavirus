@@ -52,6 +52,28 @@ The files `data/covid_confirmed_usafacts.csv` and `data/covid_deaths_usafacts.cs
 The file `data/us_states_abbreviations.csv` maps state and territory abbreviations to state names. Source: https://github.com/aruljohn/us-states.
 
 
+### US coronavirus deaths by age
+
+CDC is publishing statistics for deaths broken down by age, location of death (e.g. hospital, longterm care facility, ...), sex and other variables. The url is https://data.cdc.gov/api/views/hc4f-j6nb/rows.csv?accessType=DOWNLOAD and the landing page is https://www.cdc.gov/nchs/nvss/vsrr/covid19/index.htm.
+
+
+This table is saved in `cdc_provisional_coronavirus_deaths.csv`.
+
+https://data.cdc.gov/api/views/hc4f-j6nb/rows.csv?accessType=DOWNLOAD&bom=true&format=true
+
+
+### NYC coronavirus case and death statistics by age (and comorbidity)
+
+NYC publishes stats on deaths and cases by age band.
+They also publish stats on deaths by comorbity and age band status (but not cases.)
+
+Data on Age, Comorbidity and Death
+New York City Sources:
+- NYC Health Department: https://www1.nyc.gov/site/doh/covid/covid-19-data.page
+- deaths by age and comorbidity status: https://www1.nyc.gov/assets/doh/downloads/pdf/imm/covid-19-daily-data-summary-deaths-04222020-1.pdf
+- cases by age band: https://www1.nyc.gov/assets/doh/downloads/pdf/imm/covid-19-daily-data-summary-04222020-1.pdf
+
+
 ### Coronavirus deaths by country
 
 https://covid.ourworldindata.org/data/ecdc/full_data.csv

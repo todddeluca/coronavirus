@@ -17,7 +17,7 @@ bad_flu_dpm = seasonal_flu_deaths.max() / us_pop * 1e6
 print(f'seasonal_flu_dpm: {seasonal_flu_dpm:.0f}, bad_flu_dpm: {bad_flu_dpm:.0f}')
 
 
-def days_since_trim(df, index_col, values_col, days_since_col, days_since_thresh):
+def days_since_trim(df, index_col, days_since_col, days_since_thresh, values_col=None):
     '''
     The visualizations look bad when some of the entities have very long trajectories (e.g. China) and others have
     much shorter ones.
@@ -27,9 +27,11 @@ def days_since_trim(df, index_col, values_col, days_since_col, days_since_thresh
 
     :param df:
     :param index_col: either date or days_since. This is the pivot index.
-    :param values_col: e.g. deaths, deaths_per_million, deaths_per_day, deaths_per_million_per_day
     :param days_since_col: e.g. deaths_per_million or date or cases_per_day
     :param days_since_thresh: e.g. 0.1 deaths per million or pd.to_datetime('2020-03-01') or 1 case per day
+    :param values_col: e.g. deaths, deaths_per_million, deaths_per_day, deaths_per_million_per_day. If None,
+    the default, the entire row of observations before the first day the threshold is met is removed. If it
+    is the name of a column, that column is filled with np.nan for those rows.
     :return:
     '''
     # Trim rows before the timeperiod we are looking at:
@@ -40,6 +42,31 @@ def days_since_trim(df, index_col, values_col, days_since_col, days_since_thresh
             df['days_since'] = make_days_since(df, days_since_col, days_since_thresh)
 
     return df
+
+
+def prioritize_entities(df, index_col, values_col, ascending=True, n_top=None, n_show=None, includes=None, excludes=None):
+    # Pivot to a table with country/entity columns and date/days_since rows
+    piv = df.pivot(index=index_col, columns='entity', values=values_col)
+    piv = piv.loc[piv.notnull().any(axis=1), :]  # remove entities with all null values
+
+    # sort by the last non-nan value. (For index_col=='days_since', the last value(s) can be nan.
+    sort_idx = np.argsort(piv.apply(lambda s: s[s.notna()].iloc[-1], axis=0))
+    if not ascending:
+        sort_idx = sort_idx[::-1]
+
+    # Choose which entities to plot
+    sorted_entities = piv.columns.values[sort_idx]
+    n_ent = len(sorted_entities)
+    n_top = n_ent if n_top is None else n_top
+    n_show = n_ent if n_show is None else (n_top if n_top > n_show else n_show)
+    print(f'n_top: {n_top}, n_show: {n_show}, includes: {includes}, excludes: {excludes}')
+    includes_idx = np.isin(sorted_entities, includes) if includes else np.zeros_like(sorted_entities, dtype=bool)
+    excludes_idx = np.isin(sorted_entities, excludes) if excludes else np.zeros_like(sorted_entities, dtype=bool)
+    priority_idx = np.hstack([np.arange(n_ent)[includes_idx & ~excludes_idx],
+                              np.arange(n_ent)[~includes_idx & ~excludes_idx]])
+    show_entities = sorted_entities[np.sort(priority_idx[:n_show])]
+    top_entities = sorted_entities[np.sort(priority_idx[:n_top])]
+    return top_entities, show_entities, sorted_entities
 
 
 def plot_trajectories(df, index_col='date', values_col='deaths', rank=False, n_top=None,
@@ -161,7 +188,7 @@ def plot_trajectories(df, index_col='date', values_col='deaths', rank=False, n_t
 
     plt.xticks(rotation=-60)
     if show_legend:
-        plt.legend()
+        plt.legend(loc='upper left')
 
     plt.show()
     return piv
