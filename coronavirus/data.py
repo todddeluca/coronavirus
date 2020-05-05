@@ -211,27 +211,110 @@ def add_derived_values_cols(df):
     return df
 
 
-def add_erickson_estimates(df):
+# def add_prevalence_dimension(df):
+#     '''
+#     Consider 3 methods of estimating prevalence and infection fatality rate.
+#     Add a new dimension/axis to df by repeating each row three times, once for
+#     each method and adding a 'method' and 'prevalence' and 'ifr' columns.
+#
+#     Methods:
+#     - confirmed: cases/population
+#     - erickson: cases/tests
+#     - adjusted: using a seroprevalence adjusted cases/tests.
+#
+#     :return: a dataframe with a new "dimension" column, method, and 2 new value columns, prevalence and ifr.
+#     '''
+#     # As of 2020-05-02
+#     ny_seroprevalence = 0.123
+#     ny_tests = 959071
+#     ny_cases = 312977
+#     seroprevalence_adjustment = ny_seroprevalence / (ny_cases / ny_tests)
+#
+#     # repeat each row 3 times, once for each method
+#     methods = ['confirmed', 'erickson', 'adjusted']
+#     n_rows = len(df)
+#     dg = df.iloc[np.repeat(np.arange(n_rows), len(methods))].copy()
+#     dg['method'] = methods * n_rows
+#
+#     confirmed_prevalence = df['cases'] / df['population']
+#     erickson_prevalence = df['cases_per_test']
+#     adjusted_prevalence = df['erickson_prevalence'] * seroprevalence_adjustment
+#     prevalences = np.vstack([confirmed_prevalence, erickson_prevalence, adjusted_prevalence]).transpose().ravel()
+#     dg['prevalences'] = prevalences
+#
+#     confirmed_ifr = df['deaths'] / (confirmed_prevalence * df['population'])
+#     erickson_ifr = df['deaths'] / (erickson_prevalence * df['population'])
+#     adjusted_ifr = df['deaths'] / (adjusted_prevalence * df['population'])
+#     ifrs = np.vstack([confirmed_ifr, erickson_ifr, adjusted_ifr]).transpose().ravel()
+#     dg['ifr'] = ifrs
+#     return dg
+#
+
+def to_herd_dataframe(df):
+    herd_prevalences = [0.4, 0.6, 0.8]
+    herds = ['low', 'mid', 'high']
+    def func(d):
+        # d['herd'] = herds
+        # d['herd_prevalence'] = herd_prevalences
+        # return d
+        return pd.DataFrame({
+            'herd': herds,
+            'herd_prevalence': herd_prevalences,
+            'deaths': d['deaths'].repeat(len(herds)),
+            'cases': d['cases'].repeat(len(herds)),
+            'tests': d['tests'].repeat(len(herds)),
+            'population': d['population'].repeat(len(herds)),
+            'prevalence': d['prevalence'].repeat(len(herds)),
+            'ifr': d['ifr'].repeat(len(herds))
+        })
+
+    # dg = df.apply(lambda s: s.repeat(len(herds)))
+    dg = df.groupby(['entity', 'date', 'method']).apply(func).reset_index().drop(columns='level_3')
+    dg['herd_cases'] = dg['herd_prevalence'] * dg['population']
+    dg['herd_deaths'] = dg['herd_cases'] * dg['ifr']
+    dg['herd_deaths_per_million'] = 1000000 * dg['herd_deaths'] / dg['population']
+    return dg
+
+
+def to_prevalence_dataframe(df):
     '''
-    Add columns for prevalence estimated using confirmed cases, the Erickson estimate, and
-    an adjusted Erickson estimate that has been scaled so that for NY state it matches
-    the NY state seroprevalence results.
-    :param df:
-    :return:
+    Consider 3 methods of estimating prevalence and infection fatality rate.
+    Add a new dimension/axis to df by repeating each row three times, once for
+    each method and adding a 'method' and 'prevalence' and 'ifr' columns.
+
+    Methods:
+    - confirmed: cases/population
+    - erickson: cases/tests
+    - adjusted: using a seroprevalence adjusted cases/tests.
+
+    :return: a dataframe with a new "dimension" column, method, and 2 new value columns, prevalence and ifr.
     '''
     # As of 2020-05-02
     ny_seroprevalence = 0.123
     ny_tests = 959071
     ny_cases = 312977
     seroprevalence_adjustment = ny_seroprevalence / (ny_cases / ny_tests)
+    methods = ['confirmed', 'erickson', 'adjusted']
+    def func(d):
+        data = {
+            'method': methods,
+            'deaths': d['deaths'].repeat(len(methods)),
+            'cases': d['cases'].repeat(len(methods)),
+            'tests': d['tests'].repeat(len(methods)),
+            'population': d['population'].repeat(len(methods)),
+            'prevalence': [
+                (d['cases'] / d['population']).values[0],
+                (d['cases'] / d['tests']).values[0],
+                (seroprevalence_adjustment * d['cases'] / d['tests']).values[0]
+            ]
+        }
+        dg = pd.DataFrame(data)
+        dg['ifr'] = dg['deaths'] / (dg['prevalence'] * dg['population'])
+        return dg
 
-    df['confirmed_prevalence'] = df['cases'] / df['population']
-    df['erickson_prevalence'] = df['cases_per_test']
-    df['adjusted_erickson_prevalence'] = df['erickson_prevalence'] * seroprevalence_adjustment
-    df['confirmed_ifr'] = df['deaths'] / (df['confirmed_prevalence'] * df['population'])
-    df['erickson_ifr'] = df['deaths'] / (df['erickson_prevalence'] * df['population'])
-    df['adjusted_erickson_ifr'] = df['deaths'] / (df['adjusted_erickson_prevalence'] * df['population'])
-    return df
+    # expand df three-fold, once for each method
+    dg = df.groupby(['entity', 'date']).apply(func).reset_index().drop(columns='level_2')
+    return dg
 
 
 def to_nyc_band(df):

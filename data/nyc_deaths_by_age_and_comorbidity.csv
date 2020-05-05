@@ -1,4 +1,4 @@
-,age_band,comorbidity,deaths
+,nyc_age_band,comorbidity,deaths
 0,0 to 17,yes,6
 1,0 to 17,no,0
 2,0 to 17,unknown,0
