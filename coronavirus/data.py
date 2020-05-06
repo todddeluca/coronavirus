@@ -212,7 +212,7 @@ def add_derived_values_cols(df):
     return df
 
 
-def seroprevalence_adjustments(df):
+def seroprevalence_adjustments():
     '''
     :param df: entity, population
     :return:
@@ -222,183 +222,157 @@ def seroprevalence_adjustments(df):
     ny_seroprevalence = 0.123
     ny_tests = 959071
     ny_cases = 312977
-    ny_pop = df.loc[df['entity'] == 'New York', 'population'].values[0]
-    # print('ny_pop', ny_pop)
+    ny_pop = 19453561  # from census 2018 population estimate
     erickson_adjustment = ny_seroprevalence / (ny_cases / ny_tests)
     confirmed_adjustment = ny_seroprevalence / (ny_cases / ny_pop)
-    return erickson_adjustment, confirmed_adjustment
+    # https: // www.miamiherald.com / news / coronavirus / article242260406.html
+    miami_adjustment = 165000 / 10600
+    return erickson_adjustment, confirmed_adjustment, miami_adjustment
 
 
-def to_prevalence_dataframe(df):
-    '''
-    Consider methods of estimating prevalence and infection fatality rate.
-    Add a new dimension/axis to df by repeating each row three times, once for
-    each method and adding a 'method' and 'prevalence' and 'ifr' columns.
+# def to_prevalence_dataframe(df):
+#     '''
+#     Consider methods of estimating prevalence and infection fatality rate.
+#     Add a new dimension/axis to df by repeating each row three times, once for
+#     each method and adding a 'method' and 'prevalence' and 'ifr' columns.
+#
+#     Methods:
+#     - confirmed: cases/population
+#     - erickson: cases/tests
+#     - adjusted_erickson: using a seroprevalence adjusted cases/tests.
+#     - adjusted_confirmed: using a seroprevalence adjusted cases/population
+#
+#     :param df: date, entity, deaths, cases, tests, population.
+#     :return: a dataframe with a new "dimension" column, method, and 2 new value columns, prevalence and ifr.
+#     '''
+#
+#     # Add 'method' dimension to df
+#     # entity, date, method, deaths, cases, tests, population
+#     methods = ['confirmed', 'adjusted_confirmed', 'erickson', 'adjusted_erickson']
+#     entities = df['entity'].unique()
+#     ents, mets = list(zip(*itertools.product(entities, methods)))
+#     dm = pd.DataFrame({'entity': ents, 'method': mets})
+#     dg = df.merge(dm, on='entity')  # add "method" dimension
+#
+#     erickson_adjustment, confirmed_adjustment = seroprevalence_adjustments()
+#     idx = dg['method'] == 'confirmed'
+#     dg.loc[idx, 'prevalence'] = dg.loc[idx, 'cases'] / dg.loc[idx, 'population']
+#     idx = dg['method'] == 'adjusted_confirmed'
+#     dg.loc[idx, 'prevalence'] = confirmed_adjustment * dg.loc[idx, 'cases'] / dg.loc[idx, 'population']
+#     idx = dg['method'] == 'erickson'
+#     dg.loc[idx, 'prevalence'] = dg.loc[idx, 'cases'] / dg.loc[idx, 'tests']
+#     idx = dg['method'] == 'adjusted_erickson'
+#     dg.loc[idx, 'prevalence'] = erickson_adjustment * dg.loc[idx, 'cases'] / dg.loc[idx, 'tests']
+#     dg.loc[:, 'ifr'] = dg.loc[:, 'deaths'] / (dg.loc[:, 'prevalence'] * dg.loc[:, 'population'])
+#     return dg
 
-    Methods:
-    - confirmed: cases/population
-    - erickson: cases/tests
-    - adjusted_erickson: using a seroprevalence adjusted cases/tests.
-    - adjusted_confirmed: using a seroprevalence adjusted cases/population
 
-    :param df: date, entity, deaths, cases, tests, population.
-    :return: a dataframe with a new "dimension" column, method, and 2 new value columns, prevalence and ifr.
-    '''
-
-    # Add 'method' dimension to df
-    # entity, date, method, deaths, cases, tests, population
-    methods = ['confirmed', 'adjusted_confirmed', 'erickson', 'adjusted_erickson']
-    entities = df['entity'].unique()
-    ents, mets = list(zip(*itertools.product(entities, methods)))
-    dm = pd.DataFrame({'entity': ents, 'method': mets})
-    dg = df.merge(dm, on='entity')  # add "method" dimension
-
-    erickson_adjustment, confirmed_adjustment = seroprevalence_adjustments(dg)
-    idx = dg['method'] == 'confirmed'
-    dg.loc[idx, 'prevalence'] = dg.loc[idx, 'cases'] / dg.loc[idx, 'population']
-    idx = dg['method'] == 'adjusted_confirmed'
-    dg.loc[idx, 'prevalence'] = confirmed_adjustment * dg.loc[idx, 'cases'] / dg.loc[idx, 'population']
-    idx = dg['method'] == 'erickson'
-    dg.loc[idx, 'prevalence'] = dg.loc[idx, 'cases'] / dg.loc[idx, 'tests']
-    idx = dg['method'] == 'adjusted_erickson'
-    dg.loc[idx, 'prevalence'] = erickson_adjustment * dg.loc[idx, 'cases'] / dg.loc[idx, 'tests']
-    dg.loc[:, 'ifr'] = dg.loc[:, 'deaths'] / (dg.loc[:, 'prevalence'] * dg.loc[:, 'population'])
-    return dg
-
-
-def to_prevalence_age_dataframe(df, pop, dc):
-    '''
-    We have data for deaths and cases by state and age band
-    We have data for population by state and age band
-    We have data for deaths and cases by state and date.
-    We would like to have: tests by state and age band, and by date.
-    We would love to have: comorbidities by state and age band, and by date.
-    :param df: entity date deaths cases tests.
-    :param pop: entity age_band population
-    :param dc: entity age_band deaths and cases. Only for a single entity. To be broadcast across entities.
-    :return:
-    '''
-    dc = dc[dc['entity'] == dc['entity'].iloc[0]]  # insist on only a single entity in dc.
-    # add 'method' and 'age_band' dimensions to df
-    # entity, date, age_band, method, deaths, cases, tests, population, population_age, cases_age, deaths_age
-    methods = ['confirmed', 'adjusted_confirmed', 'erickson', 'adjusted_erickson']
-    entities = df['entity'].unique()
-    ents, mets = list(zip(*itertools.product(entities, methods)))
-    dm = pd.DataFrame({'entity': ents, 'method': mets})
-    # _age columns are broadcast across date dimension
-    # non _age columns are broadcast across age dimension
-    # all value columns are broadcast across method dimension
-    dg = df.merge(pop, on='entity', suffixes=('', '_age'))  # broadcast population_age across dates, methods
-    dg = dg.merge(dc, on=['age_band'], suffixes=('', '_age'))  # broadcast deaths_age, cases_age across entities, methods, dates.
-    dg = dg.merge(dm, on='entity')  # add "method" dimension
-
-    age_bands = dg['age_band'].unique()
-    n_age = len(age_bands)
-
-    # print(f'dg.columns: {dg.columns}')
-    # print(dg[dg['entity'] == 'New York'])
-    erickson_adjustment, confirmed_adjustment = seroprevalence_adjustments(dg)
-    tests_age = dg['tests'] / n_age  # we don't have tests by age and state.
-    population_age = dg['population_age']
-
-    dg['cases_age_frac'] = dg['cases_age'] / dg.groupby(['entity', 'date', 'method'])['cases_age'].transform(sum)
-    cases_age = dg['cases_age_frac'] * dg['cases']  # methods: uses cases * the proportion of cases from the age band
-    # cases_age = dg['cases'] / n_age  # methods: distribute cases uniformly across age band.  instead of cases / n.
-
-    dg['deaths_age_frac'] = dg['deaths_age'] / dg.groupby(['entity', 'date', 'method'])['deaths_age'].transform(sum)
-    deaths_age = dg['deaths_age_frac'] * dg['deaths']  # methods: uses cases * the proportion of cases from the age band
-    # deaths_age = dg['deaths'] / n_age  # methods: uses cases * pct_cases_age instead of cases / n.
-
-    idx = dg['method'] == 'confirmed'
-    dg.loc[idx, 'prevalence'] = cases_age[idx] / population_age[idx]
-    idx = dg['method'] == 'adjusted_confirmed'
-    dg.loc[idx, 'prevalence'] = (confirmed_adjustment * cases_age[idx]) / population_age[idx]
-    idx = dg['method'] == 'erickson'
-    dg.loc[idx, 'prevalence'] = cases_age[idx] / tests_age[idx]
-    idx = dg['method'] == 'adjusted_erickson'
-    dg.loc[idx, 'prevalence'] = (erickson_adjustment * cases_age[idx]) / tests_age[idx]
-
-    dg.loc[:, 'ifr'] = deaths_age / (dg.loc[:, 'prevalence'] * population_age)
-    return dg
+# def to_prevalence_age_dataframe(df, pop, dc):
+#     '''
+#     We have data for deaths and cases by state and age band
+#     We have data for population by state and age band
+#     We have data for deaths and cases by state and date.
+#     We would like to have: tests by state and age band, and by date.
+#     We would love to have: comorbidities by state and age band, and by date.
+#     :param df: entity date deaths cases tests.
+#     :param pop: entity age_band population
+#     :param dc: entity age_band deaths and cases. Only for a single entity. To be broadcast across entities.
+#     :return:
+#     '''
+#     dc = dc[dc['entity'] == dc['entity'].iloc[0]]  # insist on only a single entity in dc.
+#     # add 'method' and 'age_band' dimensions to df
+#     # entity, date, age_band, method, deaths, cases, tests, population, population_age, cases_age, deaths_age
+#     methods = ['confirmed', 'adjusted_confirmed', 'erickson', 'adjusted_erickson']
+#     entities = df['entity'].unique()
+#     ents, mets = list(zip(*itertools.product(entities, methods)))
+#     dm = pd.DataFrame({'entity': ents, 'method': mets})
+#     # _age columns are broadcast across date dimension
+#     # non _age columns are broadcast across age dimension
+#     # all value columns are broadcast across method dimension
+#     dg = df.merge(pop, on='entity', suffixes=('', '_age'))  # broadcast population_age across dates, methods
+#     dg = dg.merge(dc, on=['age_band'], suffixes=('', '_age'))  # broadcast deaths_age, cases_age across entities, methods, dates.
+#     dg = dg.merge(dm, on='entity')  # add "method" dimension
+#
+#     age_bands = dg['age_band'].unique()
+#     n_age = len(age_bands)
+#
+#     # print(f'dg.columns: {dg.columns}')
+#     # print(dg[dg['entity'] == 'New York'])
+#     erickson_adjustment, confirmed_adjustment = seroprevalence_adjustments()
+#     tests_age = dg['tests'] / n_age  # we don't have tests by age and state.
+#     population_age = dg['population_age']
+#
+#     dg['cases_age_frac'] = dg['cases_age'] / dg.groupby(['entity', 'date', 'method'])['cases_age'].transform(sum)
+#     cases_age = dg['cases_age_frac'] * dg['cases']  # methods: uses cases * the proportion of cases from the age band
+#     # cases_age = dg['cases'] / n_age  # methods: distribute cases uniformly across age band.  instead of cases / n.
+#
+#     dg['deaths_age_frac'] = dg['deaths_age'] / dg.groupby(['entity', 'date', 'method'])['deaths_age'].transform(sum)
+#     deaths_age = dg['deaths_age_frac'] * dg['deaths']  # methods: uses cases * the proportion of cases from the age band
+#     # deaths_age = dg['deaths'] / n_age  # methods: uses cases * pct_cases_age instead of cases / n.
+#
+#     idx = dg['method'] == 'confirmed'
+#     dg.loc[idx, 'prevalence'] = cases_age[idx] / population_age[idx]
+#     idx = dg['method'] == 'adjusted_confirmed'
+#     dg.loc[idx, 'prevalence'] = (confirmed_adjustment * cases_age[idx]) / population_age[idx]
+#     idx = dg['method'] == 'erickson'
+#     dg.loc[idx, 'prevalence'] = cases_age[idx] / tests_age[idx]
+#     idx = dg['method'] == 'adjusted_erickson'
+#     dg.loc[idx, 'prevalence'] = (erickson_adjustment * cases_age[idx]) / tests_age[idx]
+#
+#     dg.loc[:, 'ifr'] = deaths_age / (dg.loc[:, 'prevalence'] * population_age)
+#     return dg
 
 
 def add_prevalence_dimension(df):
     entities = df['entity'].unique()
-    methods = ['confirmed', 'adjusted_confirmed', 'erickson', 'adjusted_erickson']
+    methods = ['confirmed', 'adjusted_confirmed', 'erickson', 'adjusted_erickson', 'miami_confirmed']
     ents, mets = list(zip(*itertools.product(entities, methods)))
     dm = pd.DataFrame({'entity': ents, 'method': mets})
     dg = df.merge(dm, on='entity')
     return dg
 
 
-def add_prevalence_cols(df, groupby=['entity']):
-    """
-
-    :param df: method [entity] [age_band] [herd] [comorbidity] tests cases deaths population
-    :return:
-    """
-    erickson_adjustment, confirmed_adjustment = seroprevalence_adjustments(df)
-    idx = df['method'] == 'confirmed'
-    df.loc[idx, 'prevalence'] = df.loc[idx, 'cases'] / df.loc[idx, 'population']
-    idx = df['method'] == 'adjusted_confirmed'
-    df.loc[idx, 'prevalence'] = confirmed_adjustment * df.loc[idx, 'cases'] / df.loc[idx, 'population']
-    idx = df['method'] == 'erickson'
-    df.loc[idx, 'prevalence'] = df.loc[idx, 'cases'] / df.loc[idx, 'tests']
-    idx = df['method'] == 'adjusted_erickson'
-    df.loc[idx, 'prevalence'] = erickson_adjustment * df.loc[idx, 'cases'] / df.loc[idx, 'tests']
-    df.loc[:, 'ifr'] = df.loc[:, 'deaths'] / (df.loc[:, 'prevalence'] * df.loc[:, 'population'])
-    return df
-
-
-def add_age_dimension(df, pop, dc):
+def add_age_dimension(df, pop, dc, groupby=['entity', 'date', 'method']):
     '''
     We have data for deaths and cases by state and age band
     We have data for population by state and age band
     We have data for deaths and cases by state and date.
     We would like to have: tests by state and age band, and by date.
     We would love to have: comorbidities by state and age band, and by date.
-    :param df: entity date deaths cases tests.
+
+    :param df: entity [date] [method] deaths cases tests.
     :param pop: entity age_band population
     :param dc: entity age_band deaths cases. Only for a single entity. To be broadcast across entities.
-    :return:
+    :param groupby: population_age_frac is determined by summing population_age across the age dimension.
+      groupby is a list of other dimensions in df, like entity, date, method, etc.
+    :return: add age_band dimension. add population_age col. Add tests_age, cases_age, deaths_age columns, which distribute
+      the tests, cases, deaths cols across age_bands.
     '''
     dc = dc[dc['entity'] == dc['entity'].iloc[0]]  # insist on only a single entity in dc.
     dg = df.merge(pop, on='entity', suffixes=('', '_age'))  # broadcast population_age across dates, methods
-    dg = dg.merge(dc, on='age_band', suffixes=('', '_age'))  # broadcast deaths_age, cases_age across entities, methods, dates.
-    return dg
+    dg = dg.merge(dc, on='age_band', suffixes=('', '_dc'))  # broadcast deaths_age, cases_age across entities, methods, dates.
 
+    # methods: distribute tests uniformly across population.
+    # since we don't have tests segmented by age for any states currently.
+    # DATA NEEDED: tests segmented by age for at least one state.
+    dg['population_age_frac'] = dg['population_age'] / dg.groupby(groupby)['population_age'].transform(sum)
+    dg['tests_age'] = dg['population_age_frac'] * dg['tests']  # we don't have tests by age and state.
 
-def add_prevalence_age_cols(dg, groupby=['entity', 'date', 'method']):
-    """
+    # methods: distribute cases according to the distribution of cases across age bands (in NYC data)
+    # an alternative would be to distribute cases uniformly across population.
+    dg['cases_age_frac'] = dg['cases_dc'] / dg.groupby(groupby)['cases_dc'].transform(sum)
+    dg['cases_age'] = dg['cases_age_frac'] * dg['cases']  # methods: uses cases * the proportion of cases from the age band
 
-    :param dg: entity date method age_band tests cases deaths population
-    :return:
-    """
-    # print(f'dg.columns: {dg.columns}')
-    # print(dg[dg['entity'] == 'New York'])
-    erickson_adjustment, confirmed_adjustment = seroprevalence_adjustments(dg)
-    n_age = len(dg['age_band'].unique())
-    tests_age = dg['tests'] / n_age  # we don't have tests by age and state.
-    population_age = dg['population_age']
+    # methods: distribute cases according to the distribution of cases across age bands (in NYC data)
+    # an alternative would be to distribute cases uniformly across population.
+    dg['deaths_age_frac'] = dg['deaths_dc'] / dg.groupby(groupby)['deaths_dc'].transform(sum)
+    dg['deaths_age'] = dg['deaths_age_frac'] * dg['deaths']  # methods: uses cases * the proportion of cases from the age band
 
-    dg['cases_age_frac'] = dg['cases_age'] / dg.groupby(groupby)['cases_age'].transform(sum)
-    cases_age = dg['cases_age_frac'] * dg['cases']  # methods: uses cases * the proportion of cases from the age band
-    # cases_age = dg['cases'] / n_age  # methods: distribute cases uniformly across age band.  instead of cases / n.
-
-    dg['deaths_age_frac'] = dg['deaths_age'] / dg.groupby(groupby)['deaths_age'].transform(sum)
-    deaths_age = dg['deaths_age_frac'] * dg['deaths']  # methods: uses cases * the proportion of cases from the age band
-    # deaths_age = dg['deaths'] / n_age  # methods: uses cases * pct_cases_age instead of cases / n.
-
-    idx = dg['method'] == 'confirmed'
-    dg.loc[idx, 'prevalence'] = cases_age[idx] / population_age[idx]
-    idx = dg['method'] == 'adjusted_confirmed'
-    dg.loc[idx, 'prevalence'] = (confirmed_adjustment * cases_age[idx]) / population_age[idx]
-    idx = dg['method'] == 'erickson'
-    dg.loc[idx, 'prevalence'] = cases_age[idx] / tests_age[idx]
-    idx = dg['method'] == 'adjusted_erickson'
-    dg.loc[idx, 'prevalence'] = (erickson_adjustment * cases_age[idx]) / tests_age[idx]
-
-    dg.loc[:, 'ifr'] = deaths_age / (dg.loc[:, 'prevalence'] * population_age)
+    dg = dg.drop(columns=['population', 'tests', 'cases', 'deaths', 'deaths_dc', 'cases_dc'])
+    dg = dg.rename(columns={'population_age': 'population',
+                            'tests_age': 'tests',
+                            'cases_age': 'cases',
+                            'deaths_age': 'deaths'})
     return dg
 
 
@@ -416,12 +390,65 @@ def add_herd_dimension(df):
     return dg
 
 
-def add_herd_cols(dg, use_pop_age=False):
-    population = 'population_age' if use_pop_age else 'population'
-    dg['herd_cases'] = dg['herd'] * dg[population]
-    dg['herd_deaths'] = dg['herd_cases'] * dg['ifr']
-    dg['herd_deaths_per_million'] = 1000000 * dg['herd_deaths'] / dg[population]
-    return dg
+def add_herd_cols(df):
+    '''
+    Given an infection fatality rate (ifr), a population, and a prevalence,
+    compute the number of cases, deaths and deaths per million.
+    :param df: herd, population, ifr
+    :return:
+    '''
+    df['herd_cases'] = df['herd'] * df['population']
+    df['herd_deaths'] = df['herd_cases'] * df['ifr']
+    df['herd_deaths_per_million'] = 1000000 * df['herd_deaths'] / df['population']
+    return df
+
+
+def add_prevalence_cols(df):
+    """
+    Add prevalence (and optionally prevalence_age) for every prevalence method.
+    :param df: method tests cases deaths population [tests_age cases_age deaths_age population_age]
+    :return:
+    """
+    erickson_adjustment, confirmed_adjustment, miami_adjustment = seroprevalence_adjustments()
+    idx = df['method'] == 'confirmed'
+    df.loc[idx, 'prevalence'] = df.loc[idx, 'cases'] / df.loc[idx, 'population']
+    idx = df['method'] == 'adjusted_confirmed'
+    df.loc[idx, 'prevalence'] = confirmed_adjustment * df.loc[idx, 'cases'] / df.loc[idx, 'population']
+    idx = df['method'] == 'miami_confirmed'
+    df.loc[idx, 'prevalence'] = miami_adjustment * df.loc[idx, 'cases'] / df.loc[idx, 'population']
+    idx = df['method'] == 'erickson'
+    df.loc[idx, 'prevalence'] = df.loc[idx, 'cases'] / df.loc[idx, 'tests']
+    idx = df['method'] == 'adjusted_erickson'
+    df.loc[idx, 'prevalence'] = erickson_adjustment * df.loc[idx, 'cases'] / df.loc[idx, 'tests']
+
+    df['ifr'] = df.loc[:, 'deaths'] / (df.loc[:, 'prevalence'] * df.loc[:, 'population'])
+    df['cfr'] = df['deaths'] / df['cases']
+    return df
+
+
+# def add_prevalence_age_cols(dg, groupby=['entity', 'date', 'method']):
+#     """
+#
+#     :param dg: entity date method age_band tests cases deaths population
+#     :return:
+#     """
+#     # print(f'dg.columns: {dg.columns}')
+#     # print(dg[dg['entity'] == 'New York'])
+#     erickson_adjustment, confirmed_adjustment, miami_adjustment = seroprevalence_adjustments()
+#
+#     idx = dg['method'] == 'confirmed'
+#     dg.loc[idx, 'prevalence_age'] = dg.loc[idx, 'cases_age'] / dg.loc[idx, 'population_age']
+#     idx = dg['method'] == 'adjusted_confirmed'
+#     dg.loc[idx, 'prevalence_age'] = (confirmed_adjustment * dg.loc[idx, 'cases_age']) / dg.loc[idx, 'population_age']
+#     idx = dg['method'] == 'miami_confirmed'
+#     dg.loc[idx, 'prevalence_age'] = (miami_adjustment * dg.loc[idx, 'cases_age']) / dg.loc[idx, 'population_age']
+#     idx = dg['method'] == 'erickson'
+#     dg.loc[idx, 'prevalence_age'] = dg.loc[idx, 'cases_age'] / dg.loc[idx, 'tests_age']
+#     idx = dg['method'] == 'adjusted_erickson'
+#     dg.loc[idx, 'prevalence_age'] = (erickson_adjustment * dg.loc[idx, 'cases_age']) / dg.loc[idx, 'tests_age']
+#
+#     dg.loc[:, 'ifr_age'] = dg['deaths_age'] / (dg['prevalence_age'] * dg['population_age'])
+#     return dg
 
 
 def to_nyc_band(df):
