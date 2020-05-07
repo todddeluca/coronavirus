@@ -390,6 +390,33 @@ def add_herd_dimension(df):
     return dg
 
 
+def add_condition_dimension(df, p=0.985):
+    '''
+    :param df:
+    :param p: the probability that a person who died of coronavirus has a comorbidity.
+    :return:
+    '''
+    prevalences = [0.1, 0.3, 0.5]
+    conditions = [False, True]
+    entities = df['entity'].unique()
+    ents, pres, cons = list(zip(*itertools.product(entities, prevalences, conditions)))
+    dm = pd.DataFrame({'entity': ents, 'condition_prevalence': pres, 'condition': cons})
+    df = df.merge(dm, on=['entity'])
+
+    idx = df['condition'] == True
+    df.loc[idx, 'deaths'] = p * df.loc[idx, 'deaths']
+    df.loc[idx, 'cases'] = df.loc[idx, 'condition_prevalence'] * df.loc[idx, 'cases']
+    df.loc[idx, 'tests'] = df.loc[idx, 'condition_prevalence'] * df.loc[idx, 'tests']
+    df.loc[idx, 'population'] = df.loc[idx, 'condition_prevalence'] * df.loc[idx, 'population']
+
+    idx = df['condition'] == False
+    df.loc[idx, 'deaths'] = (1 - p) * df.loc[idx, 'deaths']
+    df.loc[idx, 'cases'] = (1 - df.loc[idx, 'condition_prevalence']) * df.loc[idx, 'cases']
+    df.loc[idx, 'tests'] = (1 - df.loc[idx, 'condition_prevalence']) * df.loc[idx, 'tests']
+    df.loc[idx, 'population'] = (1 - df.loc[idx, 'condition_prevalence']) * df.loc[idx, 'population']
+    return df
+
+
 def add_herd_cols(df):
     '''
     Given an infection fatality rate (ifr), a population, and a prevalence,
