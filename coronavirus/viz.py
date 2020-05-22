@@ -162,7 +162,8 @@ def plot_trajectories(df, index_col='date', values_col='deaths', rank=False, n_t
         plt.axhline(bad_flu_dpm, color='orange', linestyle='--', label='bad flu')
 
     if values_col.endswith('_ratio'):
-        plt.axhline(1, color='blue', linestyle='--', label='same')
+        # plt.axhline(1, color='blue', linestyle='--', label='same')
+        pass
 
     plt.grid(True, which='major')  # add gridlines (major and minor ticks)
 
@@ -195,5 +196,26 @@ def plot_trajectories(df, index_col='date', values_col='deaths', rank=False, n_t
 
     plt.show()
     return piv
+
+
+def format_for_display(df):
+    """
+    Round estimates that should be counts. Format frequencies to 6 decimal places to avoid scientific notation when
+    printing table.
+    :param df: deaths cases tests infections population ifr cfr mr prevalence
+    :return:
+    """
+    # display
+    df['infections'] = df['infections'].round()
+    df['population'] = df['population'].round()
+    df['tests'] = df['tests'].round()
+    df['cases'] = df['cases'].round()
+    df['deaths'] = df['deaths'].round()
+    df['prevalence'] = df['prevalence'].apply(lambda x: f'{x:.6f}')
+    df['ifr'] = df['ifr'].apply(lambda x: f'{x:.6f}')
+    df['cfr'] = df['cfr'].apply(lambda x: f'{x:.6f}')
+    df['mr'] = df['mr'].apply(lambda x: f'{x:.6f}')
+    return df
+
 
 
