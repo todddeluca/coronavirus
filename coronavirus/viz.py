@@ -215,6 +215,9 @@ def format_for_display(df):
     df['ifr'] = df['ifr'].apply(lambda x: f'{x:.6f}')
     df['cfr'] = df['cfr'].apply(lambda x: f'{x:.6f}')
     df['mr'] = df['mr'].apply(lambda x: f'{x:.6f}')
+    if 'herd_deaths' in df.columns:
+        df['herd_deaths'] = df['herd_deaths'].round()
+
     return df
 
 

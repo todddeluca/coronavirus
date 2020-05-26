@@ -461,6 +461,14 @@ def add_age_dimension(df, age_methods=None, pops=None, dcs=None):
     return dg
 
 
+def add_herd_cols(df, herd_prevalence):
+    df['herd_prevalence'] = herd_prevalence
+    df['herd_infections'] = herd_prevalence * df['population']
+    df['herd_deaths'] = df['herd_infections'] * df['ifr']
+    df['herd_mr'] = df['herd_deaths'] / df['population']
+    return df
+
+
 def add_prevalence_dimension(df, methods=['confirmed', 'adjusted_confirmed', 'erickson', 'adjusted_erickson', 'miami_confirmed']):
     '''
     Add an axis/dimension for prevalence methods
@@ -562,7 +570,7 @@ def add_condition_dimension(df, p=0.985):
     return df
 
 
-def add_herd_cols(df):
+def add_herd_cols_old(df):
     '''
     Given an infection fatality rate (ifr), a population, and a prevalence,
     compute the number of cases, deaths and deaths per million.
