@@ -763,12 +763,12 @@ def load_ecdc_country_data(download=False, cache=False):
     Source: https://www.ecdc.europa.eu/en/publications-data/download-todays-data-geographic-distribution-covid-19-cases-worldwide
     Returns: a dataframe with columns date, entity, cases, deaths, population
     """
-    url = 'https://opendata.ecdc.europa.eu/covid19/casedistribution/csv'
+    url = 'https://opendata.ecdc.europa.eu/covid19/casedistribution/csv/'
     filename = DATA_DIR / 'ecdc_covid19_casedistribution.csv'
     df = download_or_load(url, filename, download=download, cache=cache)
     # fix backwards euro dates
     df['date'] = df.apply(lambda s: datetime.datetime(year=s['year'], month=s['month'], day=s['day']), axis=1)
-    df = df.rename(columns={'popData2018': 'population',
+    df = df.rename(columns={'popData2019': 'population',
                             'countriesAndTerritories': 'entity',
                             'cases': 'new_cases',
                             'deaths': 'new_deaths'})
@@ -895,13 +895,7 @@ def load_covidtracking_state_data(download=False, cache=False):
     return df
 
 
-# load data
-# df['days_since'] = make_days_since(df, 'deaths_per_million', 0.1)
-def load_all(download=False):
-    states_df = (load_covidtracking_state_data(download=download, cache=True)
-                 .pipe(add_derived_values_cols))
-    countries_df = (load_ecdc_country_data(download=download, cache=True)
-                    .pipe(add_derived_values_cols))
+def combine_states_and_countries(states_df, countries_df):
     # combine countries and states, dropping the countries 'Puerto Rico' (b/c it is in states_df) and 'Georgia' (b/c a state is named 'Georgia')
     all_df = (countries_df.loc[
                   ~countries_df['entity'].isin(['Georgia', 'Puerto Rico']), ['date', 'entity', 'cases', 'deaths',
@@ -909,6 +903,16 @@ def load_all(download=False):
               .append(states_df.loc[:, ['date', 'entity', 'cases', 'deaths', 'population']], ignore_index=True)
               .reset_index(drop=True)
               .pipe(add_derived_values_cols))
+    return all_df
+
+
+def load_all(download=False):
+    states_df = (load_covidtracking_state_data(download=download, cache=True)
+                 .pipe(add_derived_values_cols))
+    countries_df = (load_ecdc_country_data(download=download, cache=True)
+                    .pipe(add_derived_values_cols))
+    all_df = combine_states_and_countries(states_df, countries_df)
+
     return states_df, countries_df, all_df
 
 
